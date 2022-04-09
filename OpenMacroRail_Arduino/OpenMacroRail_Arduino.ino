@@ -35,8 +35,11 @@ Preferences preferences; //Used to store user-settings in EEPROM
 float shootingSpeed = 0.1; //mm/s
 float jogSpeed = 1; //mm/s
 float deshakeDelay = 4; //s
-float shootDelay = 0.5; //s
+float shutterDelay = 0.5; //s (used to prevent camera moves while the shutter is still open)
 float overshootDistance = 0.5; //mm (used by goToStartPoint() to counteract mechanical backlash by making sure gear teeth are active from the beginning.)
+
+//Non adjustable settings
+float triggerDelay = 0.2; //s
 
 //Calculated settings:
 float currentPos = 0.0; //mm
@@ -70,7 +73,17 @@ enum OPERATING_STATE{
   HOME_DETECTED,
   TEST_MODE
 };
-OPERATING_STATE current_state = JOGGING;
+OPERATING_STATE current_operating_state = JOGGING;
+
+enum SESSION_STATE{
+  NEXT_IMAGE,
+  WAIT_DESHAKE,
+  WAIT_TRIGGER,
+  WAIT_SHUTTER
+};
+SESSION_STATE current_session_state = NEXT_IMAGE;
+long time_prev_session_state_change = millis();
+long timeout_period = deshakeDelay; //This variable adapts to current_session_state, so it's not constant!
 
 WebServer server(80);
 
@@ -111,8 +124,20 @@ void jog_bwd(){
 }
 
 void activateCameraTrigger(){
+  //NOTE: the shutter pin is pulled high to activate the optocoupler, which in turn pulls the camera trigger signal low.
+  digitalWrite(SHUTTER_PIN, HIGH); 
+}
+
+void deactivateCameraTrigger(){
+  digitalWrite(SHUTTER_PIN, LOW);
+  picsTaken +=1; //Note: The picture is actually taken in the "activateCameraTrigger" function, but we increment when the wait is over to reduce risk of constant triggering.
+}
+
+void toggleCameraTrigger(){
+  // It is strongly discouraged to use this function as it will block the website from being responsive.
+  // The reason it exists is to provide a more readable version of the activate/deactivate camera trigger part of the shooting session state machine.
   digitalWrite(SHUTTER_PIN, HIGH);
-  delay(200);
+  delay(triggerDelay*1000);
   digitalWrite(SHUTTER_PIN, LOW);
   picsTaken +=1;
 }
@@ -138,20 +163,20 @@ void goToStartPoint(){
 void calculateStats(){
   increment = distance/(numImages-1);
   remainingPictures = numImages-picsTaken;
-  if(distance>0){
-    totalShootingTime = (numImages*(shootDelay+deshakeDelay+0.2)+distance/shootingSpeed)/60; //Simplified calculation that ignores accelleration
+  if(distance!=0){
+    totalShootingTime = (numImages*(shutterDelay+deshakeDelay+0.2)+distance/shootingSpeed)/60; //Simplified calculation that ignores accelleration
   }else{
     totalShootingTime = 0;
   }
-  if(current_state==OPERATING_STATE::PHOTO_SESSION){
-    remainingShootingTime = (remainingPictures*(shootDelay+deshakeDelay+0.2)+distance/shootingSpeed)/60; //Simplified calculation that ignores accelleration
+  if(current_operating_state==OPERATING_STATE::PHOTO_SESSION){
+    remainingShootingTime = (remainingPictures*(shutterDelay+deshakeDelay+0.2)+distance/shootingSpeed)/60; //Simplified calculation that ignores accelleration
   }else{
     remainingShootingTime = 0;
   }
 }
 
 void setStartPoint(){
-  if (current_state != PHOTO_SESSION)
+  if (current_operating_state != PHOTO_SESSION)
   {
     startPoint = currentPos;
     distance = endPoint-startPoint;
@@ -160,7 +185,7 @@ void setStartPoint(){
 }
 
 void setEndPoint(){
-  if (current_state != PHOTO_SESSION)
+  if (current_operating_state != PHOTO_SESSION)
   {
     endPoint = currentPos;
     distance = endPoint-startPoint;
@@ -170,7 +195,7 @@ void setEndPoint(){
 
 void updateStepperSettings(){
   stepper.setStepsPerMillimeter(microstepsPerMillimeter);
-  if(current_state==JOGGING){
+  if(current_operating_state==JOGGING){
     stepper.setSpeedInMillimetersPerSecond(jogSpeed);
   }else{
     stepper.setSpeedInMillimetersPerSecond(shootingSpeed);
@@ -183,7 +208,7 @@ void writeSettingsToEEPROM(){
   preferences.putFloat("shootingSpeed",shootingSpeed);
   preferences.putFloat("jogSpeed",jogSpeed);
   preferences.putFloat("deshakeDelay",deshakeDelay);
-  preferences.putFloat("shootDelay",shootDelay);
+  preferences.putFloat("shootDelay",shutterDelay);
   preferences.putFloat("overshootDist",overshootDistance);
   preferences.putUInt("init",1); //Indicate that EEPROM contains data for next reboot
 }
@@ -193,7 +218,7 @@ void readSettingsFromEEPROM(){
     shootingSpeed     = preferences.getFloat("shootingSpeed",shootingSpeed);
     jogSpeed          = preferences.getFloat("jogSpeed",jogSpeed);
     deshakeDelay      = preferences.getFloat("deshakeDelay",deshakeDelay);
-    shootDelay        = preferences.getFloat("shootDelay",shootDelay);
+    shutterDelay      = preferences.getFloat("shootDelay",shutterDelay);
     overshootDistance = preferences.getFloat("overshootDist",overshootDistance);
   }else{
     writeSettingsToEEPROM();
@@ -296,7 +321,7 @@ void setup(void){
   server.on("/start", [](){
     Serial.println("start");
     goToStartPoint();
-    current_state=PHOTO_SESSION;
+    current_operating_state=PHOTO_SESSION;
     picsTaken = 0;
     updateStepperSettings();
     server.send(200, "text/plain", "start");
@@ -304,7 +329,7 @@ void setup(void){
 
   server.on("/abort", [](){
     Serial.println("abort");
-    current_state=JOGGING;
+    current_operating_state=JOGGING;
     updateStepperSettings();
     server.send(200, "text/plain", "abort");
   });
@@ -351,11 +376,11 @@ void setup(void){
   server.on("/shootDelayForm", [](){
     Serial.println("shootDelayForm");
     if(server.hasArg("num")){
-      shootDelay = server.arg("num").toFloat();
+      shutterDelay = server.arg("num").toFloat();
       calculateStats();
-      preferences.putFloat("shootDelay",shootDelay);
+      preferences.putFloat("shootDelay",shutterDelay);
     }
-    server.send(200, "text/plain", String(shootDelay));
+    server.send(200, "text/plain", String(shutterDelay));
   });
 
   server.on("/overshootDistanceForm", [](){
@@ -375,7 +400,7 @@ void setup(void){
   });
   
   server.on("/refreshForms", [](){
-    String response = "jogIncrement:"+String(jogIncrement,1)+","+"numImages:"+String(numImages)+","+"shootingSpeed:"+String(shootingSpeed,1)+","+"jogSpeed:"+String(jogSpeed,1)+","+"deshakeDelay:"+String(deshakeDelay,1)+","+"shootDelay:"+String(shootDelay,1)+","+"overshootDistance:"+String(overshootDistance,1)+",";
+    String response = "jogIncrement:"+String(jogIncrement,1)+","+"numImages:"+String(numImages)+","+"shootingSpeed:"+String(shootingSpeed,1)+","+"jogSpeed:"+String(jogSpeed,1)+","+"deshakeDelay:"+String(deshakeDelay,1)+","+"shootDelay:"+String(shutterDelay,1)+","+"overshootDistance:"+String(overshootDistance,1)+",";
     server.send(200, "text/plain", response);
   });
   server.onNotFound(handleNotFound);
@@ -386,28 +411,46 @@ void setup(void){
 
 void loop(void){
   server.handleClient();
-  
+  long time_now = millis();
 
-  if(current_state==PHOTO_SESSION){
+  if(current_operating_state==PHOTO_SESSION){
     if((picsTaken<numImages)&&((increment > 0 && currentPos <= startPoint+distance+(increment/2)) || (increment < 0 && currentPos >= startPoint+distance+(increment/2) ))) // +(increment/2) is used as a tolerance for floating point rounding-errors
     {
-      Serial.print("Current position: ");
-      Serial.print(currentPos);
-      Serial.println(" mm");
-      // shoot a frame
-      delay(deshakeDelay * 1000);
-      activateCameraTrigger();
-      if(picsTaken<numImages){
-        delay(shootDelay * 1000);
-        //increment position
-        stepper.moveRelativeInMillimeters(increment);
-        currentPos += increment;
+      if(current_session_state == NEXT_IMAGE){
+        Serial.print("Current position: ");
+        Serial.print(currentPos);
+        Serial.println(" mm");
+        time_prev_session_state_change = time_now;
+        timeout_period = deshakeDelay*1000;
+        current_session_state = WAIT_DESHAKE;
+      }else if(time_now-time_prev_session_state_change > timeout_period){ //Note: All other states are wait-states, so they share a common time check.
+        // The wait is over
+        if(current_session_state == WAIT_DESHAKE){
+            activateCameraTrigger();
+            time_prev_session_state_change = time_now;
+            timeout_period = triggerDelay*1000; //Keep trigger-pin low for a little while to ensure that the signal is registered by the camera.
+            current_session_state = WAIT_TRIGGER;
+        }else if(current_session_state == WAIT_TRIGGER){
+            deactivateCameraTrigger();
+            time_prev_session_state_change = time_now;
+            timeout_period = shutterDelay*1000; //Wait for shutterDelay to ensure that camera shutter is no longer open before next move
+            current_session_state = WAIT_SHUTTER;
+        }else if(current_session_state == WAIT_SHUTTER){
+          if(picsTaken<numImages){
+            //increment position
+            stepper.moveRelativeInMillimeters(increment);
+            currentPos += increment;
+
+            time_prev_session_state_change = time_now;
+          }
+          current_session_state = NEXT_IMAGE;
+        }
       }
     }else{
-      current_state=JOGGING;
+      current_operating_state=JOGGING;
       updateStepperSettings();
     }
-  }else if(current_state==JOGGING){
+  }else if(current_operating_state==JOGGING){
     if(JOGFWDFLAG){
       jog_fwd();
     }else if(JOGBWDFLAG){
