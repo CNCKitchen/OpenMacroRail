@@ -68,7 +68,7 @@ R"(
           <label class="btn btn-outline-secondary" for="buttonJogIncrSlow">0.1 mm</label>
         </div>
         <p class="display-6 top-label">Number of images:</p>
-        <input class="form-control bottom-labels" type="number" placeholder="eg. 200" value=200 id="numImagesForm" onchange='formContentChanged(numImagesForm)'>
+        <input class="form-control bottom-labels" type="number" placeholder="eg. 200" value=200 step="1"  min="0" id="numImagesForm" onchange='formContentChanged(numImagesForm)'>
       </div>
       <div class="d-grid gap-2 col-4 mx-auto" id="TopButtons">
         <button type="button" class="btn btn-primary btn-floating btn-lg gwd-jog-button preventTapToZoom" data-mdb-ripple-color="#ffffff" id="buttonJogFwd" onpointerup='simpleAjaxCall("jogFwd")'>↑</button>
@@ -92,79 +92,151 @@ R"(
     </div>
     <div class="row g-1 flex-grow-1" style="padding-top: 1em; padding-bottom: 1em;" id="BottomSection">
       <h6 class="h6 bottom-labels" id="Statslabel">Stats:</h6>
-      <div class="col-4 bottom-labels">Total movement distance</div>
+      <div class="col-8 bottom-labels">Start point</div>
+      <div class="col-4 bottom-labels" id="startPointStatLabel">0.0 mm</div>
+
+      <div class="col-8 bottom-labels">End point</div>
+      <div class="col-4 bottom-labels" id="endPointStatLabel">0.0 mm</div>
+
+      <div class="col-8 bottom-labels">Total movement distance</div>
       <div class="col-4 bottom-labels" id="distanceStatLabel">0.0 mm</div>
-      <div class="col-4 bottom-labels"></div>
-      <div class="col-4 bottom-labels">Increment</div>
+
+      <div class="col-8 bottom-labels">Increment</div>
       <div class="col-4 bottom-labels" id="incrementStatLabel">0.0 mm</div>
-      <div class="col-4 bottom-labels"></div>
-      <div class="col-4 bottom-labels">Total shooting time</div>
-      <div class="col-4 bottom-labels" id="shootTimeStatLabel">0.0 min</div>
-      <div class="col-4 bottom-labels"></div>
+
+      <div class="col-8 bottom-labels">Remaining pictures</div>
+      <div class="col-4 bottom-labels" id="remainingPicturesStatLabel">0</div>
+
+      <div class="col-8 bottom-labels">Remaining shooting time</div>
+      <div class="col-4 bottom-labels" id="remainingShootTimeStatLabel">0.0 min</div>
+
+      <div class="col-8 bottom-labels">Total shooting time</div>
+      <div class="col-4 bottom-labels" id="totalShootTimeStatLabel">0.0 min</div>
+
       <h6 class="h6 bottom-labels" id="settingsLabel">Settings:</h6>
-      <div class="col-4 bottom-labels">Shooting speed</div>
+      <div class="col-6 bottom-labels">Shooting speed</div>
       <div class="col-3 bottom-labels">
-        <input class="form-control bottom-labels" type="number" placeholder="eg. 0.1" value=0.1 id="shootingSpeedForm" onchange='formContentChanged(shootingSpeedForm)'>
+        <input class="form-control bottom-labels" type="number" placeholder="eg. 0.1" value=0.1 step="0.1"  min="0" max="10" id="shootingSpeedForm" onchange='formContentChanged(shootingSpeedForm)'>
       </div>
       <div class="col-3 bottom-labels"> mm/s</div>
-      <div class="col-2 bottom-labels"></div>
-      <div class="col-4 bottom-labels">Jog speed</div>
+
+      <div class="col-6 bottom-labels">Jog speed</div>
       <div class="col-3 bottom-labels">
-        <input class="form-control  bottom-labels" type="number" placeholder="eg. 1" value=1 id="jogSpeedForm" onchange='formContentChanged(jogSpeedForm)'>
+        <input class="form-control  bottom-labels" type="number" placeholder="eg. 1" value=1 step="0.1"  min="0" max="10" id="jogSpeedForm" onchange='formContentChanged(jogSpeedForm)'>
       </div>
       <div class="col-3 bottom-labels"> mm/s</div>
-      <div class="col-2 bottom-labels"></div>
-      <div class="col-4 bottom-labels">Deshake delay</div>
+
+      <div class="col-6 bottom-labels">Deshake delay</div>
       <div class="col-3 bottom-labels">
-        <input class="form-control bottom-labels" type="number" placeholder="eg. 4" value=4 id="deshakeDelayForm" onchange='formContentChanged(deshakeDelayForm)'>
+        <input class="form-control bottom-labels" type="number" placeholder="eg. 4" value=4 step="0.1"  min="0" max="60" id="deshakeDelayForm" onchange='formContentChanged(deshakeDelayForm)'>
       </div>
       <div class="col-3 bottom-labels"> s</div>
-      <div class="col-2 bottom-labels"></div>
-      <div class="col-4 bottom-labels">Shoot delay</div>
+
+      <div class="col-6 bottom-labels">Shoot delay</div>
       <div class="col-3 bottom-labels">
-        <input class="form-control bottom-labels" type="number" placeholder="eg. 0.5" value=0.5 id="shootDelayForm" onchange='formContentChanged(shootDelayForm)'>
+        <input class="form-control bottom-labels" type="number" placeholder="eg. 0.5" value=0.5 step="0.1"  min="0" max="5" id="shootDelayForm" onchange='formContentChanged(shootDelayForm)'>
       </div>
       <div class="col-3 bottom-labels"> s</div>
-      <div class="col-2 bottom-labels"></div>
+
+      <div class="col-6 bottom-labels">Overshoot distance</div>
+      <div class="col-3 bottom-labels">
+        <input class="form-control bottom-labels" type="number" placeholder="eg. 0.5" value=0.5 step="0.1"  min="0" max="1" id="overshootDistanceForm" onchange='formContentChanged(overshootDistanceForm)'>
+      </div>
+      <div class="col-3 bottom-labels"> mm</div>
+      
     </div>
   </div>
   <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.12.4/jquery.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.min.js" integrity="sha384-QJHtvGhmr9XOIpI6YVutG+2QOK9T+ZnN4kzFN1RtK3zEFEIsxhlmWl5/YESvpZ13" crossorigin="anonymous"></script>
   <script> 
-  window.onload = refreshLabels
-  window.setInterval(refreshLabels, 5000)
+  window.onload = refreshStats
+  window.onload = refreshForms
+  window.setInterval(refreshStats, 5000)
+  window.setInterval(refreshForms, 30000)
 
-  function refreshLabels() {
-    $.ajax({
-    "url": "refreshLabels",
-    "success": function( result ) {
-      console.log("Ajax result: "+result);
-      var arr = result.split(":");
-      var key = arr[0]
-      var value = -1;
-      for (let i = 1; i < arr.length; i++) { 
-        let arr2 = arr[i].split(",")
-        value = arr2[0];
-        switch (key) {
-          case "currentPos":
-            currentPosLabel.textContent = value; 
-            break;
-          case "distance":
-            distanceStatLabel.textContent = value;
-            break;
-          case "increment":
-            incrementStatLabel.textContent = value;
-            break;
-          case "shootingTime":
-            shootTimeStatLabel.textContent = value;
-            break;
-          default:
-            break;
-        }
-
-        key = arr2[1];
+  function insertData( datastring ) {
+    console.log("Ajax result: "+datastring);
+    var arr = datastring.split(":");
+    var key = arr[0]
+    var value = -1;
+    for (let i = 1; i < arr.length; i++) { 
+      let arr2 = arr[i].split(",")
+      value = arr2[0];
+      switch (key) {
+        case "currentPos":
+          currentPosLabel.textContent = value; 
+          break;
+        case "jogIncrement":
+          if(value === "1.0"){
+            buttonJogIncrFast.checked = true;
+          }else if(value === "0.5"){
+            buttonJogIncrMedium.checked = true;
+          }else if(value === "0.1"){
+            buttonJogIncrSlow.checked = true;
+          }
+          break;
+        case "numImages":
+          numImagesForm.value = value; 
+          break;
+        case "startPoint":
+          startPointStatLabel.textContent = value; 
+          break;
+        case "endPoint":
+          endPointStatLabel.textContent = value; 
+          break;
+        case "distance":
+          distanceStatLabel.textContent = value;
+          break;
+        case "increment":
+          incrementStatLabel.textContent = value;
+          break;remainingPicturesStatLabel
+        case "remainingPictures":
+          remainingPicturesStatLabel.textContent = value;
+          break;
+        case "remainingShootingTime":
+          remainingShootTimeStatLabel.textContent = value;
+          break;
+        case "totalShootingTime":
+          totalShootTimeStatLabel.textContent = value;
+          break;
+        case "shootingSpeed":
+          shootingSpeedForm.value = value; 
+          break;
+        case "jogSpeed":
+          jogSpeedForm.value = value; 
+          break;
+        case "deshakeDelay":
+          deshakeDelayForm.value = value; 
+          break;
+        case "shootDelay":
+          shootDelayForm.value = value; 
+          break;
+        case "overshootDistance":
+          overshootDistanceForm.value = value; 
+          break;
+        default:
+          break;
       }
-    } 
+
+      key = arr2[1];
+    }
+  } 
+
+  function refreshStats() {
+    $.ajax({
+    "url": "refreshStats",
+    "success": function(result){
+      insertData(result);
+    }
+  });
+  }
+
+  function refreshForms() {
+    $.ajax({
+    "url": "refreshForms",
+    "success": function(result){
+      insertData(result);
+    }
   });
   }
 
@@ -174,9 +246,11 @@ R"(
       {
         "num": formID.value
       });
+      formID.style.color = "#000000"; //indicate valid data
       console.log(formID.id+" changed");
-      refreshLabels();
+      refreshStats();
     }else{
+      formID.style.color = "#ff0000"; //indicate invalid data
       console.log("Oopsie."+formID.id+" contains invalid data");
     }
   }
@@ -192,7 +266,7 @@ R"(
   }
   function simpleAjaxCall(url){
     $.ajax({"url": url});
-    refreshLabels();
+    refreshStats();
   }
 </script>
 </body>

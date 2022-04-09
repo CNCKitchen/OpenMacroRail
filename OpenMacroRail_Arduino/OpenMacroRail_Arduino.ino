@@ -3,15 +3,19 @@
 #include <WebServer.h>
 #include <ESPmDNS.h>
 #include <SpeedyStepper.h>
+#include <Preferences.h>
 #include "WiFi-credentials.h"
 
-// Pin declarations:
+// Unused pin declarations (these pins are present on Motorized Macro Slider PCB V1.2):
 // const int LED_PWM_PIN = 4;
 // const int LIMIT1_PIN = 12;
 // const int LIMIT2_PIN = 13;
 // const int ENC_A_PIN = 32;
 // const int ENC_B_PIN = 35;
 // const int STEP_INDEX_PIN = 25;
+// HardwareSerial &serial_stream = Serial2; //Serial2: RX pin 16, TX pin 17
+
+// Pin declarations
 const int SHUTTER_PIN = 5;
 const int MOTOR_STEP_PIN = 18;
 const int MOTOR_DIRECTION_PIN = 19;
@@ -20,25 +24,28 @@ const int STEP_MS1_PIN = 27;
 const int STEP_MS2_PIN = 14;
 const int STEP_DIAG_PIN = 33;
 
-///Adjustable settings (through web interface)
+// Adjustable settings (through web interface)
 float startPoint = 0; //mm
 float endPoint = 0; //mm
 float jogIncrement = 0.1; //mm
 int numImages = 200;
+
+// Adjustable settings (through web interface) that will be stored in EEPROM between power-cycles
+Preferences preferences; //Used to store user-settings in EEPROM
 float shootingSpeed = 0.1; //mm/s
 float jogSpeed = 1; //mm/s
 float deshakeDelay = 4; //s
 float shootDelay = 0.5; //s
-
-//Adjustable settings not currently available in web interface:
 float overshootDistance = 0.5; //mm (used by goToStartPoint() to counteract mechanical backlash by making sure gear teeth are active from the beginning.)
 
 //Calculated settings:
 float currentPos = 0.0; //mm
 float distance = 0.0; //mm
 float increment = 0.0; //mm
-float shootingTime = 0.0; //min
-int picsTaken = 0; //TODO: Add this to GUI along with time remaining
+float remainingShootingTime = 0.0; //min
+float totalShootingTime = 0.0; //min
+int picsTaken = 0; 
+int remainingPictures = 0; 
 
 SpeedyStepper stepper;
 
@@ -130,10 +137,16 @@ void goToStartPoint(){
 
 void calculateStats(){
   increment = distance/(numImages-1);
+  remainingPictures = numImages-picsTaken;
   if(distance>0){
-    shootingTime = (numImages*(shootDelay+deshakeDelay+0.2)+distance/shootingSpeed)/60; //Simplified calculation that ignores accelleration
+    totalShootingTime = (numImages*(shootDelay+deshakeDelay+0.2)+distance/shootingSpeed)/60; //Simplified calculation that ignores accelleration
   }else{
-    shootingTime = 0;
+    totalShootingTime = 0;
+  }
+  if(current_state==OPERATING_STATE::PHOTO_SESSION){
+    remainingShootingTime = (remainingPictures*(shootDelay+deshakeDelay+0.2)+distance/shootingSpeed)/60; //Simplified calculation that ignores accelleration
+  }else{
+    remainingShootingTime = 0;
   }
 }
 
@@ -166,6 +179,27 @@ void updateStepperSettings(){
   calculateStats();
 }
 
+void writeSettingsToEEPROM(){
+  preferences.putFloat("shootingSpeed",shootingSpeed);
+  preferences.putFloat("jogSpeed",jogSpeed);
+  preferences.putFloat("deshakeDelay",deshakeDelay);
+  preferences.putFloat("shootDelay",shootDelay);
+  preferences.putFloat("overshootDist",overshootDistance);
+  preferences.putUInt("init",1); //Indicate that EEPROM contains data for next reboot
+}
+
+void readSettingsFromEEPROM(){
+  if(preferences.getUInt("init",0) != 0){
+    shootingSpeed     = preferences.getFloat("shootingSpeed",shootingSpeed);
+    jogSpeed          = preferences.getFloat("jogSpeed",jogSpeed);
+    deshakeDelay      = preferences.getFloat("deshakeDelay",deshakeDelay);
+    shootDelay        = preferences.getFloat("shootDelay",shootDelay);
+    overshootDistance = preferences.getFloat("overshootDist",overshootDistance);
+  }else{
+    writeSettingsToEEPROM();
+  }
+}
+
 void setup(void){
 
   pinMode(SHUTTER_PIN, OUTPUT); 
@@ -185,6 +219,8 @@ void setup(void){
   WiFi.begin(ssid, password);
   Serial.println("");
 
+  preferences.begin("settings",false);
+  readSettingsFromEEPROM();
 
   // Wait for connection
   while (WiFi.status() != WL_CONNECTED) {
@@ -287,6 +323,7 @@ void setup(void){
     if(server.hasArg("num")){
       shootingSpeed = server.arg("num").toFloat();
       updateStepperSettings();
+      preferences.putFloat("shootingSpeed",shootingSpeed);
     }
     server.send(200, "text/plain", String(shootingSpeed));
   });
@@ -296,6 +333,7 @@ void setup(void){
     if(server.hasArg("num")){
       jogSpeed = server.arg("num").toFloat();
       updateStepperSettings();
+      preferences.putFloat("jogSpeed",jogSpeed);
     }
     server.send(200, "text/plain", String(jogSpeed));
   });
@@ -305,6 +343,7 @@ void setup(void){
     if(server.hasArg("num")){
       deshakeDelay = server.arg("num").toFloat();
       calculateStats();
+      preferences.putFloat("deshakeDelay",deshakeDelay);
     }
     server.send(200, "text/plain", String(deshakeDelay));
   });
@@ -314,12 +353,29 @@ void setup(void){
     if(server.hasArg("num")){
       shootDelay = server.arg("num").toFloat();
       calculateStats();
+      preferences.putFloat("shootDelay",shootDelay);
     }
     server.send(200, "text/plain", String(shootDelay));
   });
+
+  server.on("/overshootDistanceForm", [](){
+    Serial.println("overshootDistanceForm");
+    if(server.hasArg("num")){
+      overshootDistance = server.arg("num").toFloat();
+      calculateStats();
+      preferences.putFloat("overshootDist",overshootDistance);
+    }
+    server.send(200, "text/plain", String(overshootDistance));
+  });
   
-  server.on("/refreshLabels", [](){
-    String response = "currentPos:"+String(currentPos,3)+" mm,"+"distance:"+String(distance)+","+"increment:"+String(increment,4)+","+"shootingTime:"+String(shootingTime)+" min,";
+  server.on("/refreshStats", [](){
+    calculateStats();
+    String response = "startPoint:"+String(startPoint,3)+" mm,"+"endPoint:"+String(endPoint,3)+" mm,"+"currentPos:"+String(currentPos,3)+" mm,"+"distance:"+String(distance)+" mm,"+"increment:"+String(increment,4)+" mm,"+"remainingPictures:"+String(remainingPictures)+","+"remainingShootingTime:"+String(remainingShootingTime)+" min,"+"totalShootingTime:"+String(totalShootingTime)+" min,";
+    server.send(200, "text/plain", response);
+  });
+  
+  server.on("/refreshForms", [](){
+    String response = "jogIncrement:"+String(jogIncrement,1)+","+"numImages:"+String(numImages)+","+"shootingSpeed:"+String(shootingSpeed,1)+","+"jogSpeed:"+String(jogSpeed,1)+","+"deshakeDelay:"+String(deshakeDelay,1)+","+"shootDelay:"+String(shootDelay,1)+","+"overshootDistance:"+String(overshootDistance,1)+",";
     server.send(200, "text/plain", response);
   });
   server.onNotFound(handleNotFound);
