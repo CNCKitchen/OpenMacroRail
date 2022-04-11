@@ -4,7 +4,7 @@ R"(
 
 <head>
   <meta charset="utf-8">
-  <title>SliderGUI</title>
+  <title>OpenMacroRail</title>
   <meta name="viewport" content="width=device-width">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" integrity="sha384-1BmE4kWBq78iYhFldvKuhfTAU6auU8tT94WrHftjDbrCEXSU1oBoqyl2QvZ6jIW3" crossorigin="anonymous">
   <style type="text/css" id="gwd-text-style">
@@ -140,7 +140,7 @@ R"(
 
       <div class="col-6 bottom-labels">Overshoot distance</div>
       <div class="col-3 bottom-labels">
-        <input class="form-control bottom-labels" type="number" placeholder="eg. 0.5" value=0.5 step="0.1"  min="0" max="1" id="overshootDistanceForm" onchange='formContentChanged(overshootDistanceForm)'>
+        <input class="form-control bottom-labels" type="number" placeholder="eg. 0.5" value=0.5 step="0.1"  min="0" max="10" id="overshootDistanceForm" onchange='formContentChanged(overshootDistanceForm)'>
       </div>
       <div class="col-3 bottom-labels"> mm</div>
       
@@ -149,8 +149,7 @@ R"(
   <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.12.4/jquery.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.min.js" integrity="sha384-QJHtvGhmr9XOIpI6YVutG+2QOK9T+ZnN4kzFN1RtK3zEFEIsxhlmWl5/YESvpZ13" crossorigin="anonymous"></script>
   <script> 
-  window.onload = refreshStats
-  window.onload = refreshForms
+  window.onload = refreshFormsAndStats
   window.setInterval(refreshStats, 5000)
   window.setInterval(refreshForms, 30000)
 
@@ -238,6 +237,11 @@ R"(
       insertData(result);
     }
   });
+  }
+
+  function refreshFormsAndStats() {
+    refreshForms();
+    refreshStats();
   }
 
   function formContentChanged(formID){

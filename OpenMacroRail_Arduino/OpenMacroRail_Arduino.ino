@@ -39,9 +39,11 @@ float shutterDelay = 0.5; //s (used to prevent camera moves while the shutter is
 float overshootDistance = 0.5; //mm (used by goToStartPoint() to counteract mechanical backlash by making sure gear teeth are active from the beginning.)
 
 //Non adjustable settings
-float triggerDelay = 0.2; //s
+float triggerDelay = 0.25; //s
+const bool invert_directions = false; // Use this variable to swap behavior of forwards- and backwards-buttons (instead of rewiring motor)
 
 //Calculated settings:
+const int invert_direction_multiplier = invert_directions ? -1 : 1; // Do not modify! This variable changes direction of moves according to the boolean invert_directions. 
 float currentPos = 0.0; //mm
 float distance = 0.0; //mm
 float increment = 0.0; //mm
@@ -113,13 +115,13 @@ void handleNotFound(){
 
 void jog_fwd(){
   JOGFWDFLAG = false;
-  stepper.moveRelativeInMillimeters(jogIncrement);
+  stepper.moveRelativeInMillimeters(jogIncrement * invert_direction_multiplier);
   currentPos += jogIncrement;
 }
 
 void jog_bwd(){
   JOGBWDFLAG = false;
-  stepper.moveRelativeInMillimeters(-jogIncrement);
+  stepper.moveRelativeInMillimeters(-jogIncrement  * invert_direction_multiplier);
   currentPos -= jogIncrement;
 }
 
@@ -134,42 +136,40 @@ void deactivateCameraTrigger(){
 }
 
 void toggleCameraTrigger(){
-  // It is strongly discouraged to use this function as it will block the website from being responsive.
-  // The reason it exists is to provide a more readable version of the activate/deactivate camera trigger part of the shooting session state machine.
-  digitalWrite(SHUTTER_PIN, HIGH);
+  // It is strongly discouraged to use this function during normal operation as it will block the website from being responsive.
+  activateCameraTrigger();
   delay(triggerDelay*1000);
-  digitalWrite(SHUTTER_PIN, LOW);
-  picsTaken +=1;
+  deactivateCameraTrigger();
 }
 
 void goToStartPoint(){
   float currentMove;
   //TODO: Manual overshoot should be replaced with load sensing through TMC SafeGuard function.
-  if((currentPos - startPoint)<0){
-    currentMove = -(currentPos - startPoint) + overshootDistance;
-    stepper.moveRelativeInMillimeters(currentMove);
+  if((currentPos - startPoint) < 0){
+    currentMove = (-(currentPos - startPoint) + overshootDistance);
+    stepper.moveRelativeInMillimeters(currentMove * invert_direction_multiplier);
     currentPos += currentMove;
-    stepper.moveRelativeInMillimeters(-overshootDistance);
+    stepper.moveRelativeInMillimeters(-overshootDistance * invert_direction_multiplier);
     currentPos -= overshootDistance;
   }else{
-    currentMove = -(currentPos - startPoint) - overshootDistance;
-    stepper.moveRelativeInMillimeters(currentMove);
+    currentMove = (-(currentPos - startPoint) - overshootDistance);
+    stepper.moveRelativeInMillimeters(currentMove * invert_direction_multiplier);
     currentPos += currentMove;
-    stepper.moveRelativeInMillimeters(overshootDistance);
+    stepper.moveRelativeInMillimeters(overshootDistance * invert_direction_multiplier);
     currentPos += overshootDistance;
   }
 }
 
 void calculateStats(){
-  increment = distance/(numImages-1);
-  remainingPictures = numImages-picsTaken;
-  if(distance!=0){
-    totalShootingTime = (numImages*(shutterDelay+deshakeDelay+0.2)+distance/shootingSpeed)/60; //Simplified calculation that ignores accelleration
+  increment = (distance / (numImages - 1));
+  remainingPictures = numImages - picsTaken;
+  if(distance != 0){
+    totalShootingTime = (numImages * (shutterDelay + deshakeDelay + 0.2) + distance / shootingSpeed) / 60; //Simplified calculation that ignores accelleration
   }else{
     totalShootingTime = 0;
   }
   if(current_operating_state==OPERATING_STATE::PHOTO_SESSION){
-    remainingShootingTime = (remainingPictures*(shutterDelay+deshakeDelay+0.2)+distance/shootingSpeed)/60; //Simplified calculation that ignores accelleration
+    remainingShootingTime = (remainingPictures * (shutterDelay + deshakeDelay + 0.2) + distance / shootingSpeed) / 60; //Simplified calculation that ignores accelleration
   }else{
     remainingShootingTime = 0;
   }
@@ -314,14 +314,16 @@ void setup(void){
 
   server.on("/testImage", [](){
     Serial.println("testImage");
-    activateCameraTrigger();
+    toggleCameraTrigger();
     server.send(200, "text/plain", "testImage");
   });
   
   server.on("/start", [](){
     Serial.println("start");
     goToStartPoint();
-    current_operating_state=PHOTO_SESSION;
+    current_operating_state = PHOTO_SESSION;
+    current_session_state = NEXT_IMAGE;
+    time_prev_session_state_change = millis();
     picsTaken = 0;
     updateStepperSettings();
     server.send(200, "text/plain", "start");
@@ -330,6 +332,7 @@ void setup(void){
   server.on("/abort", [](){
     Serial.println("abort");
     current_operating_state=JOGGING;
+    picsTaken = 0;
     updateStepperSettings();
     server.send(200, "text/plain", "abort");
   });
@@ -438,7 +441,7 @@ void loop(void){
         }else if(current_session_state == WAIT_SHUTTER){
           if(picsTaken<numImages){
             //increment position
-            stepper.moveRelativeInMillimeters(increment);
+            stepper.moveRelativeInMillimeters(increment * invert_direction_multiplier);
             currentPos += increment;
 
             time_prev_session_state_change = time_now;
@@ -447,7 +450,9 @@ void loop(void){
         }
       }
     }else{
-      current_operating_state=JOGGING;
+      current_operating_state = JOGGING;
+      current_session_state = NEXT_IMAGE;
+      picsTaken = 0;
       updateStepperSettings();
     }
   }else if(current_operating_state==JOGGING){
