@@ -7,7 +7,6 @@
 #include "WiFi-credentials.h"
 
 // Unused pin declarations (these pins are present on Motorized Macro Slider PCB V1.2):
-// const int LED_PWM_PIN = 4;
 // const int LIMIT1_PIN = 12;
 // const int LIMIT2_PIN = 13;
 // const int ENC_A_PIN = 32;
@@ -23,6 +22,8 @@ const int STEP_EN_PIN = 26;
 const int STEP_MS1_PIN = 27;
 const int STEP_MS2_PIN = 14;
 const int STEP_DIAG_PIN = 33;
+const int LED_PWM_PIN = 4;
+const uint8_t LED_CHANNEL = 0;
 
 // Adjustable settings (through web interface)
 float startPoint = 0; //mm
@@ -41,6 +42,7 @@ float overshootDistance = 0.5; //mm (used by goToStartPoint() to counteract mech
 //Non adjustable settings
 float triggerDelay = 0.25; //s
 const bool invert_directions = false; // Use this variable to swap behavior of forwards- and backwards-buttons (instead of rewiring motor)
+const uint MAX_LED_BRIGHTNESS = 255;
 
 //Calculated settings:
 const int invert_direction_multiplier = invert_directions ? -1 : 1; // Do not modify! This variable changes direction of moves according to the boolean invert_directions. 
@@ -51,6 +53,8 @@ float remainingShootingTime = 0.0; //min
 float totalShootingTime = 0.0; //min
 int picsTaken = 0; 
 int remainingPictures = 0; 
+bool ledState = false;
+int ledBrightness = 10;
 
 SpeedyStepper stepper;
 
@@ -210,6 +214,7 @@ void writeSettingsToEEPROM(){
   preferences.putFloat("deshakeDelay",deshakeDelay);
   preferences.putFloat("shootDelay",shutterDelay);
   preferences.putFloat("overshootDist",overshootDistance);
+  preferences.putInt("ledBrightness",ledBrightness);
   preferences.putUInt("init",1); //Indicate that EEPROM contains data for next reboot
 }
 
@@ -220,6 +225,7 @@ void readSettingsFromEEPROM(){
     deshakeDelay      = preferences.getFloat("deshakeDelay",deshakeDelay);
     shutterDelay      = preferences.getFloat("shootDelay",shutterDelay);
     overshootDistance = preferences.getFloat("overshootDist",overshootDistance);
+    ledBrightness     = preferences.getInt("ledBrightness",ledBrightness);
   }else{
     writeSettingsToEEPROM();
   }
@@ -235,6 +241,16 @@ void setup(void){
   digitalWrite(STEP_EN_PIN, LOW); 
   digitalWrite(STEP_MS1_PIN, LOW); // Note: Modifying MS1 or MS2 will change UART address of TMC  
   digitalWrite(STEP_MS2_PIN, LOW); // Note: Modifying MS1 or MS2 will change UART address of TMC
+  
+  //Init high power LED
+  ledcSetup(LED_CHANNEL,5000,8);  
+  ledcAttachPin(LED_PWM_PIN, LED_CHANNEL);
+  if(ledState){
+    ledcWrite(LED_CHANNEL, ledBrightness);
+  }else{
+    
+    ledcWrite(LED_CHANNEL, 0);
+  }
 
   WiFi.mode(WIFI_STA);
   WiFi.disconnect();
@@ -346,6 +362,24 @@ void setup(void){
     server.send(200, "text/plain", String(numImages));
   });
 
+  server.on("/ledSwitch", [](){
+    Serial.println("ledSwitch");
+    if(server.hasArg("state")){
+      ledState = server.arg("state") == "true";
+    }
+    if(server.hasArg("brightnessPercent")){
+      ledBrightness = (server.arg("brightnessPercent").toFloat() / 100) * MAX_LED_BRIGHTNESS;
+      preferences.putInt("ledBrightness",ledBrightness);
+    }
+    calculateStats();
+    if(ledState){
+      ledcWrite(LED_CHANNEL,ledBrightness);
+    }else{
+      ledcWrite(LED_CHANNEL,0);
+    }
+    server.send(200, "text/plain", "ledSwitch: "+String(ledState)+", brightness: "+String(ledBrightness));
+  });
+
   server.on("/shootingSpeedForm", [](){
     Serial.println("shootingSpeedForm");
     if(server.hasArg("num")){
@@ -403,7 +437,7 @@ void setup(void){
   });
   
   server.on("/refreshForms", [](){
-    String response = "jogIncrement:"+String(jogIncrement,1)+","+"numImages:"+String(numImages)+","+"shootingSpeed:"+String(shootingSpeed,1)+","+"jogSpeed:"+String(jogSpeed,1)+","+"deshakeDelay:"+String(deshakeDelay,1)+","+"shootDelay:"+String(shutterDelay,1)+","+"overshootDistance:"+String(overshootDistance,1)+",";
+    String response = "jogIncrement:"+String(jogIncrement,1)+","+"numImages:"+String(numImages)+","+"shootingSpeed:"+String(shootingSpeed,1)+","+"jogSpeed:"+String(jogSpeed,1)+","+"deshakeDelay:"+String(deshakeDelay,1)+","+"shootDelay:"+String(shutterDelay,1)+","+"overshootDistance:"+String(overshootDistance,1)+","+"ledState:"+String(ledState)+","+"ledBrightness:"+String((uint)(((float)ledBrightness/(float)MAX_LED_BRIGHTNESS)*100))+",";
     server.send(200, "text/plain", response);
   });
   server.onNotFound(handleNotFound);

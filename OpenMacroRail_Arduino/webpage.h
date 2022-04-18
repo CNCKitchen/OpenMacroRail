@@ -43,9 +43,19 @@ R"(
       font-size: 1em;
     }
     .preventTapToZoom {
-    touch-action: manipulation;
-    -webkit-user-select: none;
-    user-select: none;
+      touch-action: manipulation;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+    .form-switch.form-switch-md .form-check-input {
+      height: 1.5rem;
+      width: calc(2rem + 0.75rem);
+      border-radius: 3rem;
+    }
+    .form-switch.form-switch-lg .form-check-input {
+      height: 2rem;
+      width: calc(3rem + 0.75rem);
+      border-radius: 4rem;
     }
   </style>
 </head>
@@ -91,7 +101,7 @@ R"(
       </div>
     </div>
     <div class="row g-1 flex-grow-1" style="padding-top: 1em; padding-bottom: 1em;" id="BottomSection">
-      <h6 class="h6 bottom-labels" id="Statslabel">Stats:</h6>
+      <h6 class="h6 bottom-labels" style="font-weight: 600;" id="Statslabel">Stats:</h6>
       <div class="col-8 bottom-labels">Start point</div>
       <div class="col-4 bottom-labels" id="startPointStatLabel">0.0 mm</div>
 
@@ -113,7 +123,17 @@ R"(
       <div class="col-8 bottom-labels">Total shooting time</div>
       <div class="col-4 bottom-labels" id="totalShootTimeStatLabel">0.0 min</div>
 
-      <h6 class="h6 bottom-labels" id="settingsLabel">Settings:</h6>
+      <h6 class="h6 bottom-labels" style="font-weight: 600; padding-top: 1em; padding-bottom: 0.5em;" id="settingsLabel">Settings:</h6>
+      
+      <div class="row g-1" style="padding-top: 0; padding-bottom: 1em; --bs-gutter-y:0" >
+        <div class="col-8 bottom-labels">Enable LED output</div>
+        <div class="form-check form-switch form-switch-lg col-4">
+          <input class="form-check-input" type="checkbox" role="switch" id="enableLEDSwitch" onchange='toggleLED()'>
+        </div>
+        <label for="LEDBrightness" class="form-label" hidden>LED Brightness (Disabled)</label>
+        <input type="range" class="form-range" id="LEDBrightness" min="0" max="100", value="5" onchange='toggleLED()' disabled hidden>
+      </div>
+
       <div class="col-6 bottom-labels">Shooting speed</div>
       <div class="col-3 bottom-labels">
         <input class="form-control bottom-labels" type="number" placeholder="eg. 0.1" value=0.1 step="0.1"  min="0" max="10" id="shootingSpeedForm" onchange='formContentChanged(shootingSpeedForm)'>
@@ -213,6 +233,14 @@ R"(
         case "overshootDistance":
           overshootDistanceForm.value = value; 
           break;
+        case "ledState":
+          enableLEDSwitch.checked = (value === "1"); 
+          updateLEDBrightnessSlider();
+          break;
+        case "ledBrightness":
+          LEDBrightness.value = value; 
+          updateLEDBrightnessSlider();
+          break;
         default:
           break;
       }
@@ -242,6 +270,7 @@ R"(
   function refreshFormsAndStats() {
     refreshForms();
     refreshStats();
+    updateLEDBrightnessSlider()
   }
 
   function formContentChanged(formID){
@@ -257,6 +286,27 @@ R"(
       formID.style.color = "#ff0000"; //indicate invalid data
       console.log("Oopsie."+formID.id+" contains invalid data");
     }
+  }
+  function updateLEDBrightnessSlider(){
+    if(enableLEDSwitch.checked){
+      LEDBrightness.disabled = false;
+      LEDBrightness.labels[0].textContent = "LED Brightness";
+      LEDBrightness.hidden = false;
+      LEDBrightness.labels[0].hidden = false;
+    }else{
+      LEDBrightness.disabled = true;
+      LEDBrightness.labels[0].textContent = 'LED Brightness (Disabled)';
+      LEDBrightness.hidden = true;
+      LEDBrightness.labels[0].hidden = true;
+    }
+  }
+  function toggleLED(){
+    updateLEDBrightnessSlider();
+    makeAjaxCall("ledSwitch",
+    {
+      "state": enableLEDSwitch.checked,
+      "brightnessPercent": LEDBrightness.value
+    });
   }
 
   function makeAjaxCall(url,data){
