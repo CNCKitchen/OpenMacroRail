@@ -432,7 +432,7 @@ void setup(void){
   
   server.on("/refreshStats", [](){
     calculateStats();
-    String response = "startPoint:"+String(startPoint,3)+" mm,"+"endPoint:"+String(endPoint,3)+" mm,"+"currentPos:"+String(currentPos,3)+" mm,"+"distance:"+String(distance)+" mm,"+"increment:"+String(increment,4)+" mm,"+"remainingPictures:"+String(remainingPictures)+","+"remainingShootingTime:"+String(remainingShootingTime)+" min,"+"totalShootingTime:"+String(totalShootingTime)+" min,";
+    String response = "startPoint:"+String(startPoint,3)+","+"endPoint:"+String(endPoint,3)+","+"currentPos:"+String(currentPos,3)+","+"distance:"+String(distance)+","+"increment:"+String(increment,4)+","+"remainingPictures:"+String(remainingPictures)+","+"remainingShootingTime:"+String(remainingShootingTime)+","+"totalShootingTime:"+String(totalShootingTime)+",";
     server.send(200, "text/plain", response);
   });
   
